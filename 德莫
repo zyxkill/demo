@@ -1,0 +1,198 @@
+from pypbc import *
+from hashlib import sha224
+import time
+
+def H(bytes_to_hash):
+    to_hash = str(bytes_to_hash).encode()
+    hash_value = sha224(to_hash).hexdigest()
+    bits = int(hash_value, 16)
+    bits = bin(bits)[2:]
+    dis = 224 - len(bits)
+    temp = "0" * dis
+    return bits
+
+def setup(param_str, n_m, n_u):
+    start_time = time.time()
+
+    param = Parameters(qbits=param_str[0], rbits=param_str[1])
+    pairing = Pairing(param)
+    g = Element.random(pairing, G)
+    a = Element.random(pairing, Zr)
+    b = Element.random(pairing, Zr)
+    Ska = a
+    Skb = b
+    g1 = g ** b
+    g3 = g ** a
+
+    g2 = Element.random(pairing, G1)
+    u_ = Element.random(pairing, G1)
+    U = [Element.random(pairing, G1) for _ in range(n_u)]
+
+    end_time = time.time()
+    execution_time = (end_time - start_time) * 1000
+    print("Setup执行时间为:{} ms".format(execution_time))
+
+    return [param, g, g1, g2, u_, U], Skb, Ska
+
+def Wrekey(params_of_solution):
+    start_time = time.time()
+
+    param, g, g1, g2, u_, U = params_of_solution
+    pairing = Pairing(param)
+    Beta = Element.random(pairing, Zr)
+    g_ = g ** Beta
+    g1_ = g1 ** Beta
+    SKb_ = Skb ** Beta
+
+    end_time = time.time()
+    execution_time = (end_time - start_time) * 1000
+    print("Wrekey执行时间为:{} ms".format(execution_time))
+
+    return [param, g_, g1_, g2, u_, U], SKb_
+
+def ReKey(Skb_, Ska):
+    start_time = time.time()
+
+    rka_b = Skb_ / Ska
+
+    end_time = time.time()
+    execution_time = (end_time - start_time) * 1000
+    print("ReKey执行时间为:{} ms".format(execution_time))
+
+    return [rka_b]
+
+def wtrans1(params_of_solution, rka_b):
+    start_time = time.time()
+
+    alpha = Element.random(pairing, Zr)
+    # 从整数群Zp中随机选取一个整数
+    g__ = g ** alpha
+    g3_ = g3 ** alpha
+    rka_b_= rka_b*(1/alpha)
+    #对公钥g, g3和rka-b进行进行重随机化
+
+    end_time = time.time()
+    execution_time = (end_time - start_time) * 1000
+    print("Wtrans1执行时间为:{} ms".format(execution_time))
+
+    return [param, g__, g3_, g2, u_, U], rka_b_
+
+
+
+def sign(m, params_of_solution_updated, ska, skb):
+    start_time = time.time()
+
+    param, u_, U = params_of_solution_updated
+    pairing = Pairing(param)
+    M = []
+    for i in range(len(m)):
+        if m[i] == "1":
+            M.append(i)
+    # 构造消息中比特值等于1的索引集合
+    r = Element.random(pairing, Zr)
+    # 从整数群Zp中随机选取一个整数
+    for i in M:
+        u_ = u_ * U[i]
+    # 根据索引值，选取U中对应的元素连乘积
+    u_ = u_ ** r
+    sigmaA1 = u_ * g2_alpha
+    # 构造σ1
+    sigmaA2 = g ** r
+    # 构造σ1
+
+    end_time = time.time()
+    execution_time = (end_time - start_time) * 1000
+    print("Sign执行时间为:{} ms".format(execution_time))
+
+    return [sigmaA1, sigmaA2]
+
+
+ 
+def wtrans2(sigmaA1, sigmaA2):
+    start_time = time.time()
+
+    alpha = Element.random(pairing, Zr)
+    sigmaA1_ = sigmaA1 ** alpha
+    sigmaA2_ = sigmaA2 ** alpha
+
+    end_time = time.time()
+    execution_time = (end_time - start_time) * 1000
+    print("Wtrans2执行时间为:{} ms".format(execution_time))
+
+    return [sigmaA1_, sigmaA2_]
+
+def Resign(rka_b, sigmaA1_, sigmaA2_, params_of_solution_updated):
+    start_time = time.time()
+
+    param, g_, g3_, g2, u_, U = params_of_solution_updated
+    pairing = Pairing(param)
+    left1 = pairing.apply(sigmaA1_, g_)
+    left2 = pairing.apply(sigmaA2_, u_)
+    left = left1 / left2
+    right = pairing.apply(g3_, g2)
+    
+    if left == right:
+        sigmaB1 = sigmaA1_ ** rka_b
+        sigmaB2 = sigmaA2_ ** rka_b
+
+        end_time = time.time()
+        execution_time = (end_time - start_time) * 1000
+        print("ReSign执行时间为:{} ms".format(execution_time))
+
+        return [sigmaB1, sigmaB2]
+    else:
+        return False
+
+def Wtrans3(sigmaB1, sigmaB2, params_of_solution):
+    start_time = time.time()
+
+    param, g, g3, g2, u_, U = params_of_solution
+    pairing = Pairing(param)
+    beta = Element.random(pairing, Zr)
+    sigmaB1_ = sigmaB1 ** (1 / beta)
+
+    end_time = time.time()
+    execution_time = (end_time - start_time) * 1000
+    print("Wtrans3执行时间为:{} ms".format(execution_time))
+
+    return [sigmaB1_, sigmaB2]
+
+def verify(sigmaB1_, sigmaB2, params_of_solution_updated):
+    start_time = time.time()
+
+    param, g_, g1_, g2, u_, U = params_of_solution_updated
+    pairing = Pairing(param)
+    left1 = pairing.apply(sigmaB1_, g_)
+    left2 = pairing.apply(sigmaB2, u_)
+    left = left1 / left2
+    right = pairing.apply(g1_, g2)
+
+    if left == right:
+        end_time = time.time()
+        execution_time = (end_time - start_time) * 1000
+        print("Verify执行时间为:{} ms".format(execution_time))
+        return True
+    else:
+        end_time = time.time()
+        execution_time = (end_time - start_time) * 1000
+        print("Verify执行时间为:{} ms".format(execution_time))
+        return False
+
+if __name__ == '__main__':
+    PKA,SKa=[param,g,g3,g2,u_,U] , Ska = setup([512, 160], 100, 100)
+    PKB,Skb=[param,g,g1,g2,u_,U] , Skb = setup([512, 160], 100, 100)
+
+    PKB_, Skb_,Beta = Wrekey(PK)
+    rka_b = ReKey(Skb_, Ska),
+    pkA_,rka_b_=Wtrans1(rka_b,PKA)
+    
+    message = "testword"
+    sigmaA = [sigmaA1, sigmaA2] = sign(message, [PKA[0], PKA[4], PKA[5]], Ska,)
+    sigmaA_ = wtrans2(sigmaA1, sigmaA2)
+    sigmaB = Resign(rka_b_, sigmaA1_, sigmaA2_)
+    
+    sigmaB_= wtrans3(sigmaB1, sigmaB2)
+
+
+    output = verify(sigmaB1_, sigmaB2, PKB_)
+    print(output)
